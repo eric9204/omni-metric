@@ -20,7 +20,8 @@ public class QueryController {
     private final MetricQueryService metricQueryService;
     private final QueryTaskService queryTaskService;
 
-    public QueryController(MetricQueryService metricQueryService, QueryTaskService queryTaskService) {
+    public QueryController(MetricQueryService metricQueryService,
+                           QueryTaskService queryTaskService) {
         this.metricQueryService = metricQueryService;
         this.queryTaskService = queryTaskService;
     }

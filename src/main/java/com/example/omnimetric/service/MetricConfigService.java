@@ -14,12 +14,16 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 指标配置管理服务
  * 提供指标配置的 CRUD 操作，所有新增指标应通过配置完成。
+ * 自动计算 groupKey，用于查询引擎的合并执行优化。
  */
 @Service
 public class MetricConfigService {
@@ -85,6 +89,10 @@ public class MetricConfigService {
         config.setSortOrder(request.getSortOrder());
         config.setEnabled(request.getEnabled() != null ? request.getEnabled() : true);
 
+        // 自动计算分组口径标识
+        config.setGroupKey(computeGroupKey(config.getSourceTable(),
+                config.getGroupByField(), config.getFilterConditions()));
+
         MetricConfig saved = repository.save(config);
         return MetricConfigResponse.fromEntity(saved);
     }
@@ -117,7 +125,12 @@ public class MetricConfigService {
                     config.getGroupByField(), config.getSortBy(), config.getSortOrder());
         }
 
+        // 重新计算 groupKey
+        config.setGroupKey(computeGroupKey(config.getSourceTable(),
+                config.getGroupByField(), config.getFilterConditions()));
+
         MetricConfig saved = repository.save(config);
+
         return MetricConfigResponse.fromEntity(saved);
     }
 
@@ -157,10 +170,22 @@ public class MetricConfigService {
     }
 
     /**
-     * 获取启用的所有指标配置
+     * 计算分组口径标识（groupKey）
+     * 相同 sourceTable + groupByField + filterConditions 的指标具有相同 groupKey，
+     * 查询引擎会将它们合并为一次 SQL 执行。
      */
-    public List<MetricConfig> getEnabledConfigs() {
-        return repository.findByEnabledTrue();
+    public static String computeGroupKey(String sourceTable, String groupByField, String filterConditions) {
+        String raw = (sourceTable != null ? sourceTable : "") + ":"
+                + (groupByField != null ? groupByField : "") + ":"
+                + (filterConditions != null ? filterConditions : "");
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(raw.getBytes(StandardCharsets.UTF_8));
+            return "gk_" + HexFormat.of().formatHex(hash).substring(0, 12);
+        } catch (NoSuchAlgorithmException e) {
+            // fallback: use raw string hash
+            return "gk_" + Integer.toHexString(raw.hashCode());
+        }
     }
 
     /**

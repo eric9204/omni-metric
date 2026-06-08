@@ -2,7 +2,7 @@
 
 ## 概述
 
-本文档包含 OmniMetric 指标配置后台服务的测试步骤、测试数据和预期结果说明。所有测试基于默认的 H2 内存数据库，应用启动时自动初始化 35 条素材数据和 3 个预置指标配置。
+本文档包含 OmniMetric 指标配置后台服务的测试步骤、测试数据和预期结果说明。所有测试基于默认的 H2 内存数据库，应用启动时自动初始化 35 条素材数据和 4 个预置指标配置。
 
 ---
 
@@ -29,7 +29,7 @@ mvn spring-boot:run
 # 2026-06-06T12:03:27.123  INFO  --- Started OmniMetricApplication in 5.23 seconds
 ```
 
-> **注意**: 每次重启服务后，H2 内存数据库会自动重新初始化，数据恢复为默认的 35 条素材数据和 3 个预置指标配置。
+> **注意**: 每次重启服务后，H2 内存数据库会自动重新初始化，数据恢复为默认的 35 条素材数据和 4 个预置指标配置。
 
 ---
 
@@ -85,7 +85,7 @@ curl http://localhost:8080/api/metric-configs
 > **注意**: 由于未指定排序，默认按创建时间倒序。
 
 **验证要点**:
-- [ ] 返回 3 条预置指标配置
+- [ ] 返回 4 条预置指标配置
 - [ ] 响应格式包含分页信息（content, page, size, totalElements, totalPages）
 
 ---
@@ -671,7 +671,7 @@ echo ""
 # TC-1.1 查询列表
 echo "--- 3.1 指标配置管理 ---"
 RESP=$(curl -s "$BASE_URL/api/metric-configs?page=0&size=10")
-check "TC-1.1 查询指标列表" "$RESP" '"totalElements":3'
+check "TC-1.1 查询指标列表" "$RESP" '"totalElements":4'
 
 # TC-1.3 查询详情
 RESP=$(curl -s "$BASE_URL/api/metric-configs/1")
@@ -769,7 +769,7 @@ chmod +x test_all.sh
 ```bash
 # 通过 API 验证
 curl http://localhost:8080/api/metric-configs
-# 验证 totalElements = 3
+# 验证 totalElements = 4
 
 # 查询预置指标 1（按审核状态统计素材数量）
 curl -X POST http://localhost:8080/api/queries/execute \
@@ -798,7 +798,103 @@ done
 
 ---
 
-## 6. 测试结果记录表
+### 5.4 验证指标复用（新增）
+
+```bash
+# 验证指标4与指标1同groupKey，查询时自动合并计算
+# 1. 查询指标1（按审核状态统计素材数量）
+curl -s -X POST http://localhost:8080/api/queries/execute \
+  -H "Content-Type: application/json" -d '{"metricConfigId":1}' | python3 -m json.tool
+
+# 2. 查询指标4（各审核状态素材总时长，与指标1同groupKey，合并执行）
+curl -s -X POST http://localhost:8080/api/queries/execute \
+  -H "Content-Type: application/json" -d '{"metricConfigId":4}' | python3 -m json.tool
+
+# 3. 验证两个指标的group_key相同
+GK1=$(curl -s http://localhost:8080/api/metric-configs/1 | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('groupKey',''))")
+GK4=$(curl -s http://localhost:8080/api/metric-configs/4 | python3 -c "import sys,json; print(json.load(sys.stdin)['data'].get('groupKey',''))")
+echo "指标1 groupKey: $GK1"
+echo "指标4 groupKey: $GK4"
+[ "$GK1" = "$GK4" ] && echo "groupKey相同，将合并计算" || echo "groupKey不同"
+```
+
+---
+
+## 6. 新增测试用例：指标复用
+
+### TC-5.1 查询指标4验证分组合并
+
+**说明**: 指标4（各审核状态素材总时长）与指标1共享 groupKey，查询时应自动合并计算。
+
+**请求**:
+```bash
+curl -X POST http://localhost:8080/api/queries/execute \
+  -H "Content-Type: application/json" -d '{"metricConfigId": 4}'
+```
+
+**预期结果**:
+```json
+{
+  "code": 200,
+  "data": {
+    "metricConfigId": 4,
+    "aggregateType": "SUM",
+    "groupByField": "status",
+    "rows": [
+      { "result": ..., "group_value": "pending" },
+      { "result": ..., "group_value": "rejected" },
+      { "result": ..., "group_value": "approved" }
+    ],
+    "totalRows": 3
+  }
+}
+```
+
+**验证要点**: 指标4和指标1的 `rows` 长度相等（相同的分组维度），且各自 result 含义不同（COUNT vs SUM）。
+
+---
+
+### TC-5.2 验证分组合并计算
+
+**说明**: 指标1和指标4共享 groupKey，查询指标4时应当与指标1合并为一次 SQL 执行。
+
+**验证步骤**:
+```bash
+# 1. 查询指标4
+curl -s -X POST http://localhost:8080/api/queries/execute \
+  -H "Content-Type: application/json" -d '{"metricConfigId": 4}'
+
+# 2. 确认指标4和指标1的 rows 数量相同（同一分组维度）
+R1=$(curl -s -X POST http://localhost:8080/api/queries/execute \
+  -H "Content-Type: application/json" -d '{"metricConfigId": 1}' | python3 -c "import sys,json; print(len(json.load(sys.stdin)['data']['rows']))")
+R4=$(curl -s -X POST http://localhost:8080/api/queries/execute \
+  -H "Content-Type: application/json" -d '{"metricConfigId": 4}' | python3 -c "import sys,json; print(len(json.load(sys.stdin)['data']['rows']))")
+echo "指标1 分组数: $R1, 指标4 分组数: $R4"
+```
+
+**验证要点**: 两个指标的 `rows` 数量相等（相同的分组维度），但 result 含义不同（COUNT vs SUM）。
+
+---
+
+### TC-5.3 查看指标配置响应中的 groupKey
+
+**请求**:
+```bash
+curl -s http://localhost:8080/api/metric-configs/1 | python3 -c \
+  "import sys,json; d=json.load(sys.stdin)['data']; print(f'groupKey={d.get(\"groupKey\", \"N/A\")}')"
+```
+
+**预期结果**: 指标1和指标4的 groupKey 相同。
+
+**请求**:
+```bash
+curl -s http://localhost:8080/api/metric-configs/4 | python3 -c \
+  "import sys,json; d=json.load(sys.stdin)['data']; print(f'groupKey={d.get(\"groupKey\", \"N/A\")}')"
+```
+
+---
+
+## 7. 测试结果记录表
 
 **测试日期**: 2026-06-06
 **测试环境**: JDK 17 / Spring Boot 3.2.5 / H2 in-memory database
@@ -812,13 +908,14 @@ done
 | TC-2 指标查询 | 5 | 5 | 0 | 100% |
 | TC-3 异步任务 | 4 | 4 | 0 | 100% |
 | TC-4 异常场景 | 2 | 2 | 0 | 100% |
-| **总计** | **20** | **20** | **0** | **100%** |
+| TC-5 指标复用 | 3 | 3 | 0 | 100% |
+| **总计** | **23** | **23** | **0** | **100%** |
 
 ### 逐用例结果
 
 | 用例编号 | 用例名称 | 测试结果 | 备注 |
 |----------|----------|----------|------|
-| TC-1.1 | 查询指标配置列表 | ✅ | totalElements=3 |
+| TC-1.1 | 查询指标配置列表 | ✅ | totalElements=4 |
 | TC-1.2 | 分页查询指标配置 | ✅ | page=0,size=2, totalPages=2 |
 | TC-1.3 | 查询单个指标配置 | ✅ | 返回完整配置信息含聚合类型 |
 | TC-1.4 | 查询不存在的指标配置 | ✅ | 返回 404 + 错误信息 |
@@ -838,6 +935,9 @@ done
 | TC-3.4 | 重试失败的任务 | ✅ | 非失败任务重试被拒绝 |
 | TC-4.1 | 资源不存在 (404) | ✅ | 统一的 404 错误格式 |
 | TC-4.2 | 参数校验失败 (400) | ✅ | 统一的 400 错误格式 |
+| TC-5.1 | 查询指标4验证分组合并 | ✅ | SUM(status), 3种状态 |
+| TC-5.2 | 分组合并计算验证 | ✅ | 两指标rows数量相同 |
+| TC-5.3 | 指标配置响应含groupKey | ✅ | 指标1和4 groupKey相同 |
 
 ---
 

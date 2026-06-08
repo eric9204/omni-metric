@@ -9,4 +9,7 @@ import java.util.List;
 @Repository
 public interface MetricConfigRepository extends JpaRepository<MetricConfig, Long> {
     List<MetricConfig> findByEnabledTrue();
+
+    /** 按 groupKey 查找已启用的指标 */
+    List<MetricConfig> findByEnabledTrueAndGroupKey(String groupKey);
 }

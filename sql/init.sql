@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS asset (
 -- ----------------------------------------
 -- 2. 指标配置表 (metric_config)
 -- 存储业务人员配置的指标定义
+-- group_key: 自动计算的分组口径标识。
+-- 相同 groupKey 的指标共享 same sourceTable + groupByField + filterConditions，
+-- 查询引擎将它们合并为一次 SQL 执行，实现计算复用。
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS metric_config (
     id                BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -50,13 +53,15 @@ CREATE TABLE IF NOT EXISTS metric_config (
     aggregate_type    VARCHAR(20)  NOT NULL COMMENT '聚合方式: COUNT/SUM/AVG/MAX/MIN',
     group_by_field    VARCHAR(100)          COMMENT '分组维度',
     filter_conditions VARCHAR(500)          COMMENT '固定筛选条件, 如 status = ''approved''',
+    group_key         VARCHAR(32)           COMMENT '分组口径标识，相同groupKey的指标合并计算',
     sort_by           VARCHAR(100)          COMMENT '排序字段: result/group_value',
     sort_order        VARCHAR(10)           COMMENT '排序方向: asc/desc',
     enabled           TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '启用状态: 1启用/0停用',
     created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
-    KEY idx_enabled (enabled)
+    KEY idx_enabled (enabled),
+    KEY idx_group_key (group_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='指标配置表';
 
 
@@ -86,13 +91,21 @@ CREATE TABLE IF NOT EXISTS query_task (
 -- ----------------------------------------
 
 -- 指标1: 按审核状态统计素材数量
-INSERT INTO metric_config (name, description, source_table, aggregate_field, aggregate_type, group_by_field, filter_conditions, sort_by, sort_order, enabled)
-VALUES ('按审核状态统计素材数量', '统计各审核状态（已通过/已拒绝/待审核）下的素材数量', 'asset', 'asset_id', 'COUNT', 'status', NULL, 'result', 'desc', 1);
+-- groupKey: gk_87ec2dd1e1ef (asset::status:)
+INSERT INTO metric_config (name, description, source_table, aggregate_field, aggregate_type, group_by_field, filter_conditions, group_key, sort_by, sort_order, enabled)
+VALUES ('按审核状态统计素材数量', '统计各审核状态（已通过/已拒绝/待审核）下的素材数量', 'asset', 'asset_id', 'COUNT', 'status', NULL, 'gk_87ec2dd1e1ef', 'result', 'desc', 1);
 
 -- 指标2: 已通过素材的各上传人平均文件大小
-INSERT INTO metric_config (name, description, source_table, aggregate_field, aggregate_type, group_by_field, filter_conditions, sort_by, sort_order, enabled)
-VALUES ('已通过素材的各上传人平均文件大小', '统计已通过审核素材中，各上传人的平均文件大小', 'asset', 'file_size_bytes', 'AVG', 'uploader', 'status = ''approved''', 'result', 'desc', 1);
+-- groupKey: gk_230b26fca1ea (asset::uploader:status = 'approved')
+INSERT INTO metric_config (name, description, source_table, aggregate_field, aggregate_type, group_by_field, filter_conditions, group_key, sort_by, sort_order, enabled)
+VALUES ('已通过素材的各上传人平均文件大小', '统计已通过审核（status=approved）素材中，各上传人的平均文件大小', 'asset', 'file_size_bytes', 'AVG', 'uploader', 'status = ''approved''', 'gk_230b26fca1ea', 'result', 'desc', 1);
 
 -- 指标3: 各城市素材总时长
-INSERT INTO metric_config (name, description, source_table, aggregate_field, aggregate_type, group_by_field, filter_conditions, sort_by, sort_order, enabled)
-VALUES ('各城市素材总时长', '统计各城市上传素材的视频总时长，反映区域内容产出规模', 'asset', 'duration_seconds', 'SUM', 'city', NULL, 'result', 'desc', 1);
+-- groupKey: gk_257be1bf21a8 (asset::city:)
+INSERT INTO metric_config (name, description, source_table, aggregate_field, aggregate_type, group_by_field, filter_conditions, group_key, sort_by, sort_order, enabled)
+VALUES ('各城市素材总时长', '统计各城市上传素材的视频总时长，反映区域内容产出规模', 'asset', 'duration_seconds', 'SUM', 'city', NULL, 'gk_257be1bf21a8', 'result', 'desc', 1);
+
+-- 指标4: 各审核状态素材总时长（复用指标1的分组口径 status）
+-- 与指标1相同 groupKey（gk_87ec2dd1e1ef），查询引擎自动合并为一次 SQL 执行
+INSERT INTO metric_config (name, description, source_table, aggregate_field, aggregate_type, group_by_field, filter_conditions, group_key, sort_by, sort_order, enabled)
+VALUES ('各审核状态素材总时长', '统计各审核状态下素材的视频总时长，与指标1复用相同分组口径', 'asset', 'duration_seconds', 'SUM', 'status', NULL, 'gk_87ec2dd1e1ef', 'result', 'desc', 1);

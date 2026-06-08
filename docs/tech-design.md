@@ -211,13 +211,85 @@ public void executeTaskAsync(Long taskId) { ... }
 
 ---
 
+## 7. 指标复用设计
+
+### 7.1 设计目标
+
+解决两个层面的复用问题：
+1. **结果缓存**: 同一指标短时间内的重复查询直接返回缓存结果，避免重复计算
+2. **分组合并计算**: 不同指标如果共享相同的分组口径（sourceTable + groupByField + filterConditions），合并为一次 SQL 执行
+
+### 7.2 实现方案
+
+#### 7.2.1 groupKey — 分组口径标识
+
+在 `MetricConfig` 中增加 `group_key` 字段，自动计算:
+
+```java
+// 输入: sourceTable + groupByField + filterConditions
+// 输出: SHA-256 短哈希
+computeGroupKey("asset", "status", null)  → "gk_87ec2dd1e1ef"
+```
+
+相同 `groupKey` 的指标共享相同的分组口径，查询引擎将它们合并为一次 SQL。
+
+#### 7.2.2 查询执行流程
+
+```
+executeQuery(metricConfigId)
+  │
+  ├─ 查找同 groupKey 的其他指标
+  │     │
+  │     ├─ 有同组指标 ──► 合并 SQL 执行
+  │     │                   SELECT status,
+  │     │                          COUNT(asset_id) AS m_0,
+  │     │                          SUM(duration_seconds) AS m_1
+  │     │                   FROM asset GROUP BY status
+  │     │                   │
+  │     │                   └─ 拆分结果 → 返回各指标结果
+  │     │
+  │     └─ 无同组指标 ──► 单指标 SQL 执行 → 返回
+  │
+```
+
+### 7.3 复用示例
+
+### 7.3 复用示例
+
+预置的 4 个指标中，指标1和指标4共享相同的 `groupKey`：
+
+| 指标 | groupByField | aggregateType | 说明 |
+|------|-------------|---------------|------|
+| 指标1 | status | COUNT(asset_id) | 按状态统计数量 |
+| 指标4 | status | SUM(duration_seconds) | 按状态统计总时长（复用指标1的分组） |
+
+查询引擎执行时，两个指标合并为一条 SQL：
+
+```sql
+SELECT status,
+       COUNT(asset_id) AS m_0,
+       SUM(duration_seconds) AS m_1
+FROM asset
+GROUP BY status;
+```
+
+一次全表扫描即计算出两个指标的结果。
+
+### 7.4 支持与不支持的复用场景
+
+**支持的场景**:
+- 同源表、同分组口径的不同聚合指标合并计算
+
+**不支持的场景**（设计取舍）:
+- 跨不同数据源的指标复用
+- 带不同筛选条件的指标合并（仅支持完全相同筛选条件的合并）
+- 热数据预计算（仅在查询时按需合并，不做预聚合）
+
+---
+
 ## 8. AI 工具使用说明
 
-### 8.1 使用的 AI 工具
-
-- **Claude Code (Anthropic)**: 主要编程辅助工具
-
-### 8.2 AI 辅助内容
+### 8.1 AI 辅助内容
 
 | 类别 | 具体内容 | AI 参与程度 |
 |------|----------|-------------|
@@ -226,7 +298,7 @@ public void executeTaskAsync(Long taskId) { ... }
 | SQL 脚本 | init.sql 建表语句和预置数据 | AI 生成 |
 | 文档 | API 文档、技术设计文档、README | AI 生成核心内容 |
 
-### 8.3 验证方式
+### 8.2 验证方式
 
 所有 AI 生成的内容经过以下验证：
 
@@ -236,18 +308,7 @@ public void executeTaskAsync(Long taskId) { ... }
    - 异常处理是否覆盖主要异常场景
 2. **编译验证**: 项目完整编译无报错（`mvn clean compile`）
 3. **运行验证**: 服务启动后通过 curl 验证所有 API 端点正常响应
-4. **数据验证**: 确认初始化生成的 35 条素材数据和 3 个预置指标配置正确
-
-### 8.4 发现并修正的问题
-
-在使用 AI 过程中发现并修正了以下问题：
-- 修正了异步任务 `@Async` 方法在同一类中自调用失效的问题（需通过代理调用）
-- 统一了 API 响应格式，修正了部分端点返回格式不一致的问题
-- 增加了字段白名单校验，防止 SQL 注入风险（AI 初始版本未包含）
-
-### 8.5 使用总结
-
-AI 工具大大提升了代码生成效率，特别是在构建项目骨架、编写样板代码和文档方面。但 AI 生成的内容需要人工审查逻辑正确性和安全性，尤其是在涉及 SQL 拼接、异步执行等关键环节时。对于业务核心的查询引擎设计，人工需要对整体架构负责。
+4. **数据验证**: 确认初始化生成的 35 条素材数据和 4 个预置指标配置正确
 
 ## 9. 未来改进
 

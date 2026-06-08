@@ -6,7 +6,6 @@ import com.example.omnimetric.model.entity.MetricConfig;
 import com.example.omnimetric.model.entity.QueryTask;
 import com.example.omnimetric.repository.MetricConfigRepository;
 import com.example.omnimetric.repository.QueryTaskRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.Map;
 
 /**
  * 异步查询任务服务

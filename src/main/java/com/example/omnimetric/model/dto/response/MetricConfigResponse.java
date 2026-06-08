@@ -16,6 +16,7 @@ public class MetricConfigResponse {
     private String aggregateType;
     private String groupByField;
     private String filterConditions;
+    private String groupKey;
     private String sortBy;
     private String sortOrder;
     private Boolean enabled;
@@ -32,6 +33,7 @@ public class MetricConfigResponse {
         resp.setAggregateType(config.getAggregateType());
         resp.setGroupByField(config.getGroupByField());
         resp.setFilterConditions(config.getFilterConditions());
+        resp.setGroupKey(config.getGroupKey());
         resp.setSortBy(config.getSortBy());
         resp.setSortOrder(config.getSortOrder());
         resp.setEnabled(config.getEnabled());
@@ -65,6 +67,9 @@ public class MetricConfigResponse {
 
     public String getFilterConditions() { return filterConditions; }
     public void setFilterConditions(String filterConditions) { this.filterConditions = filterConditions; }
+
+    public String getGroupKey() { return groupKey; }
+    public void setGroupKey(String groupKey) { this.groupKey = groupKey; }
 
     public String getSortBy() { return sortBy; }
     public void setSortBy(String sortBy) { this.sortBy = sortBy; }

@@ -18,6 +18,10 @@ import java.util.Random;
 /**
  * 数据初始化器
  * 应用启动时自动创建模拟素材数据（不少于30条）和预置指标配置。
+ *
+ * 预置 4 个指标，其中：
+ * - 指标1 和 指标4 共享 groupKey（相同 sourceTable + groupByField + filterConditions）
+ *   用于演示分组合并计算复用
  */
 @Component
 public class DataInitializer implements CommandLineRunner {
@@ -26,7 +30,6 @@ public class DataInitializer implements CommandLineRunner {
 
     private final AssetRepository assetRepository;
     private final MetricConfigRepository metricConfigRepository;
-    private final Random random = new Random(42); // 固定种子，保证每次启动数据一致
 
     private static final List<String> UPLOADERS = List.of("张三", "李四", "王五", "赵六", "钱七", "孙八");
     private static final List<String> STATUSES = List.of("approved", "rejected", "pending");
@@ -57,6 +60,7 @@ public class DataInitializer implements CommandLineRunner {
 
     private void initAssets() {
         DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        Random random = new Random(42);
 
         for (int i = 1; i <= 35; i++) {
             Asset asset = new Asset();
@@ -104,6 +108,7 @@ public class DataInitializer implements CommandLineRunner {
         config1.setSortBy("result");
         config1.setSortOrder("desc");
         config1.setEnabled(true);
+        config1.setGroupKey(MetricConfigService.computeGroupKey("asset", "status", null));
         metricConfigRepository.save(config1);
 
         // 指标2：已通过审核素材中各上传人的平均文件大小
@@ -118,10 +123,10 @@ public class DataInitializer implements CommandLineRunner {
         config2.setSortBy("result");
         config2.setSortOrder("desc");
         config2.setEnabled(true);
+        config2.setGroupKey(MetricConfigService.computeGroupKey("asset", "uploader", "status = 'approved'"));
         metricConfigRepository.save(config2);
 
-        // 指标3：各城市的素材总时长（自选 - 有业务意义：了解各城市内容产出量）
-        // 业务意义：视频总时长反映了各城市的内容产出规模，帮助运营团队评估区域内容供给能力
+        // 指标3：各城市的素材总时长
         MetricConfig config3 = new MetricConfig();
         config3.setName("各城市素材总时长");
         config3.setDescription("统计各城市上传素材的视频总时长，反映区域内容产出规模");
@@ -132,8 +137,24 @@ public class DataInitializer implements CommandLineRunner {
         config3.setSortBy("result");
         config3.setSortOrder("desc");
         config3.setEnabled(true);
+        config3.setGroupKey(MetricConfigService.computeGroupKey("asset", "city", null));
         metricConfigRepository.save(config3);
 
-        log.info("已预置 3 个指标配置");
+        // 指标4：各审核状态素材总时长（复用指标1的分组口径 status）
+        // 与指标1共享 groupKey，查询引擎会自动合并为一次 SQL 执行
+        MetricConfig config4 = new MetricConfig();
+        config4.setName("各审核状态素材总时长");
+        config4.setDescription("统计各审核状态下素材的视频总时长，与指标1复用相同分组口径");
+        config4.setSourceTable("asset");
+        config4.setAggregateField("duration_seconds");
+        config4.setAggregateType("SUM");
+        config4.setGroupByField("status");  // SAME groupByField as metric 1
+        config4.setSortBy("result");
+        config4.setSortOrder("desc");
+        config4.setEnabled(true);
+        config4.setGroupKey(MetricConfigService.computeGroupKey("asset", "status", null)); // SAME groupKey as metric 1
+        metricConfigRepository.save(config4);
+
+        log.info("已预置 4 个指标配置（指标1和指标4共享分组口径，将合并计算）");
     }
 }

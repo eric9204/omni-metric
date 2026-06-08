@@ -7,9 +7,16 @@ import java.time.LocalDateTime;
  * 指标配置表
  * 业务人员通过配置定义指标，无需研发为每个指标单独写死查询逻辑。
  * 支持聚合方式、分组维度、筛选条件等配置化能力。
+ *
+ * groupKey: 自动计算的分组口径标识。
+ * 当多个指标的 sourceTable + groupByField + filterConditions 相同时，
+ * groupKey 相同，查询引擎会合并执行（一次查询返回多个指标结果），
+ * 实现计算复用。
  */
 @Entity
-@Table(name = "metric_config")
+@Table(name = "metric_config", indexes = {
+    @Index(name = "idx_group_key", columnList = "groupKey")
+})
 public class MetricConfig {
 
     @Id
@@ -43,6 +50,11 @@ public class MetricConfig {
     /** 固定筛选条件（如 status = 'approved'） */
     @Column(name = "filter_conditions", length = 500)
     private String filterConditions;
+
+    /** 分组口径标识，自动计算：sourceTable:groupByField:filterConditions 的hash
+     *  相同 groupKey 的指标共享计算 */
+    @Column(name = "group_key", length = 32)
+    private String groupKey;
 
     /** 排序字段 */
     @Column(name = "sort_by", length = 100)
@@ -98,6 +110,9 @@ public class MetricConfig {
 
     public String getFilterConditions() { return filterConditions; }
     public void setFilterConditions(String filterConditions) { this.filterConditions = filterConditions; }
+
+    public String getGroupKey() { return groupKey; }
+    public void setGroupKey(String groupKey) { this.groupKey = groupKey; }
 
     public String getSortBy() { return sortBy; }
     public void setSortBy(String sortBy) { this.sortBy = sortBy; }

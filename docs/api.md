@@ -326,3 +326,37 @@ POST /api/queries/task/{taskId}/retry
   }
 }
 ```
+
+---
+
+## 4. 指标复用说明
+
+### 预置指标的分组关系
+
+当前预置 4 个指标：
+
+| ID | 指标名称 | groupByField | groupKey | 说明 |
+|----|----------|-------------|----------|------|
+| 1 | 按审核状态统计素材数量 | status | `gk_87ec2dd1e1ef` | ✅ 与指标4共享 |
+| 2 | 已通过素材的各上传人平均文件大小 | uploader | `gk_230b26fca1ea` | 独立 |
+| 3 | 各城市素材总时长 | city | `gk_257be1bf21a8` | 独立 |
+| 4 | 各审核状态素材总时长 | status | `gk_87ec2dd1e1ef` | ✅ 与指标1共享 |
+
+指标1和指标4共享分组口径，查询时自动合并为一次 SQL 执行。
+
+### 响应中的 groupKey 字段
+
+指标配置响应中新增 `groupKey` 字段：
+
+```json
+{
+  "id": 1,
+  "name": "按审核状态统计素材数量",
+  "groupByField": "status",
+  "groupKey": "gk_87ec2dd1e1ef",
+  "aggregateType": "COUNT",
+  "enabled": true
+}
+```
+
+相同 `groupKey` 的指标会在查询时合并计算。`groupKey` 由系统根据 `sourceTable + groupByField + filterConditions` 自动计算得出。

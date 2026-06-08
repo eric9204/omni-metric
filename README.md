@@ -31,6 +31,32 @@ mvn clean package -DskipTests
 java -jar target/omni-metric-1.0.0.jar
 ```
 
+### 使用启动脚本
+
+```bash
+# 默认 H2 模式启动
+./scripts/start.sh
+
+# MySQL 模式启动
+./scripts/start.sh mysql
+
+# 先编译再启动
+./scripts/start.sh --build
+
+# 查看帮助
+./scripts/start.sh -h
+```
+
+### 运行测试
+
+```bash
+# 需要服务已启动
+./scripts/test.sh
+
+# 自动启动-测试-停止（推荐）
+./scripts/test.sh --start
+```
+
 启动后访问：
 - API 服务: `http://localhost:8080`
 - H2 控制台: `http://localhost:8080/h2-console` (JDBC URL: `jdbc:h2:mem:omni_metric`)
@@ -47,7 +73,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=mysql
 
 启动时自动生成：
 - **35 条**模拟素材数据（6 个上传人、7 个城市、4 个平台、多种标签和审核状态）
-- **3 个**预置指标配置
+- **4 个**预置指标配置（含 1 组复用示例）
 
 ### 预置指标
 
@@ -56,6 +82,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=mysql
 | 按审核状态统计素材数量 | COUNT(asset_id) | status | - | 了解素材审核分布 |
 | 已通过素材的各上传人平均文件大小 | AVG(file_size_bytes) | uploader | status='approved' | 评估上传人的内容质量 |
 | 各城市素材总时长 | SUM(duration_seconds) | city | - | 评估区域内容产出规模 |
+| 各审核状态素材总时长 | SUM(duration_seconds) | status | - | 与指标1复用分组口径，合并计算 |
 
 ## API 概览
 
@@ -127,8 +154,7 @@ omni-metric/
 │   │   │   ├── MetricConfig.java    # 指标配置实体
 │   │   │   └── QueryTask.java       # 查询任务实体
 │   │   ├── dto/request/             # 请求 DTO
-│   │   ├── dto/response/            # 响应 DTO
-│   │   └── enums/                   # 枚举
+│   │   └── dto/response/            # 响应 DTO
 │   ├── repository/                  # JPA 数据访问
 │   ├── service/
 │   │   ├── MetricConfigService.java # 指标配置管理
@@ -159,7 +185,7 @@ omni-metric/
 
 ## AI 工具使用说明
 
-本项目使用 AI 工具辅助开发，详见 [docs/tech-design.md](docs/tech-design.md) 第10节。
+本项目使用 AI 工具辅助开发，详见 [docs/tech-design.md](docs/tech-design.md) 第8节。
 
 ## License
 
